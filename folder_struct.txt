@@ -1,0 +1,30 @@
+agentic-automation-backend/
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── config.py
+│   ├── database.py
+│   ├── models.py
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── automations.py
+│   │   └── workflows.py
+│   ├── agents/
+│   │   ├── __init__.py
+│   │   ├── workflow_designer.py
+│   │   ├── code_generator.py
+│   │   └── executor.py
+│   ├── templates/
+│   │   ├── __init__.py
+│   │   ├── website_monitor.py
+│   │   ├── price_tracker.py
+│   │   └── discord_notifier.py
+│   └── utils/
+│       ├── __init__.py
+│       ├── llm_client.py
+│       └── validators.py
+├── requirements.txt
+├── render.yaml
+├── Dockerfile
+└── .env.example
