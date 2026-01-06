@@ -6,8 +6,8 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 email-validator==2.1.0
 
-# HTTP & Web
-httpx==0.26.0
+# HTTP & Web (compatible with supabase)
+httpx==0.24.1
 requests==2.31.0
 beautifulsoup4==4.12.3
 python-multipart==0.0.6
@@ -18,6 +18,6 @@ supabase==2.3.0
 # Scheduling
 apscheduler==3.10.4
 
-# LLM APIs
+# LLM APIs (lightweight)
 groq==0.4.1
 google-generativeai==0.3.2
