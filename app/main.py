@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routes import auth, automations, workflows
+# Remove auth import temporarily
+from app.routes import automations, workflows  # No auth for MVP!
 
 settings = get_settings()
 
@@ -14,14 +15,14 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update with your frontend URL in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+# Include routers (NO AUTH for MVP)
+# app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])  # Disabled for MVP
 app.include_router(automations.router, prefix="/api/automations", tags=["Automations"])
 app.include_router(workflows.router, prefix="/api/workflows", tags=["Workflows"])
 
