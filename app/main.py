@@ -1,18 +1,28 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import get_settings
-# Remove auth import temporarily
-from app.routes import automations, workflows  # No auth for MVP!
+from contextlib import asynccontextmanager
+from app.routes import auth, automations, workflows, hosted_automations
+from app.scheduler.automation_scheduler import start_scheduler, shutdown_scheduler
+from app.database import engine, Base
 
-settings = get_settings()
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start scheduler
+    start_scheduler()
+    yield
+    # Shutdown: Stop scheduler
+    shutdown_scheduler()
 
 app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.API_VERSION,
-    debug=settings.DEBUG
+    title="Agentic Automation Platform",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# CORS middleware
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,16 +31,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers (NO AUTH for MVP)
-# app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])  # Disabled for MVP
-app.include_router(automations.router, prefix="/api/automations", tags=["Automations"])
-app.include_router(workflows.router, prefix="/api/workflows", tags=["Workflows"])
+# Include routers
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(automations.router, prefix="/api/automations", tags=["automations"])
+app.include_router(workflows.router, prefix="/api/workflows", tags=["workflows"])
+app.include_router(hosted_automations.router, prefix="/api/hosted-automations", tags=["hosted"])
 
 @app.get("/")
-async def root():
+def read_root():
     return {
-        "message": f"Welcome to {settings.APP_NAME}",
-        "version": settings.API_VERSION,
+        "message": "Agentic Automation Platform API",
+        "version": "1.0.0",
         "status": "online"
     }
 
