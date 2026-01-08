@@ -9,6 +9,32 @@ from app.models.hosted_automation import HostedAutomation, AutomationRun
 
 scheduler = BackgroundScheduler()
 
+import os
+import resend
+
+# At the top after imports
+resend.api_key = os.getenv("RESEND_API_KEY")
+
+def send_email_notification(email: str, subject: str, body: str):
+    """Send email notification using Resend"""
+    try:
+        params = {
+            "from": "Agentic Automation <onboarding@resend.dev>",  # Use your domain later
+            "to": [email],
+            "subject": subject,
+            "html": f"""
+            <h2>{subject}</h2>
+            <p>{body}</p>
+            <hr/>
+            <small>Sent by Agentic Automation Platform</small>
+            """
+        }
+        resend.Emails.send(params)
+        print(f"📧 Email sent to {email}")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+
 def execute_website_monitor(automation: HostedAutomation, db):
     """Execute a website monitoring automation"""
     try:
@@ -42,6 +68,15 @@ def execute_website_monitor(automation: HostedAutomation, db):
         if changed:
             automation.last_result = current_value
         
+        # Send email if configured
+        if changed and config.get('email'):
+            send_email_notification(
+                config['email'],
+                f"🔔 Change Detected: {automation.name}",
+                f"URL: {config['url']}\n\nNew content:\n{current_value[:300]}"
+            )
+            run.notified = True
+
         # Send notification if changed
         if changed and config.get('discord_webhook'):
             send_discord_notification(
