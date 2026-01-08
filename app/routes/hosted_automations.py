@@ -14,20 +14,7 @@ class CreateHostedAutomation(BaseModel):
     automation_type: str
     name: str
     config: dict
-    interval_minutes: int = 60
-
-class HostedAutomationResponse(BaseModel):
-    id: int
-    automation_type: str
-    name: str
-    config: dict
-    interval_minutes: int
-    is_active: bool
-    last_run: datetime | None
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
+    interval_minutes: int = 10
 
 @router.post("/create")
 def create_hosted_automation(
@@ -36,17 +23,19 @@ def create_hosted_automation(
 ):
     """Create a new cloud-hosted automation"""
     
-    user_id = "demo_user"  # For MVP without auth
+    user_id = "demo_user"
     
     # Check limit
     count = db.query(HostedAutomation).filter(
         HostedAutomation.user_id == user_id
     ).count()
     
+    print(f"📊 Current automation count: {count}")
+    
     if count >= 3:
         raise HTTPException(
             status_code=400,
-            detail="Free tier limited to 3 active automations. Delete an existing one to create new."
+            detail="Free tier limited to 3 active automations. Delete one to create new."
         )
     
     # Create automation
@@ -56,12 +45,18 @@ def create_hosted_automation(
         name=automation.name,
         config=json.dumps(automation.config),
         interval_minutes=automation.interval_minutes,
-        is_active=True
+        is_active=True,
+        last_run=None,
+        last_result=None
     )
     
     db.add(new_automation)
     db.commit()
     db.refresh(new_automation)
+    
+    print(f"✅ Created automation #{new_automation.id}: {new_automation.name}")
+    print(f"   Config: {automation.config}")
+    print(f"   Active: {new_automation.is_active}")
     
     return {
         "id": new_automation.id,
@@ -72,12 +67,12 @@ def create_hosted_automation(
         "is_active": new_automation.is_active,
         "last_run": new_automation.last_run,
         "created_at": new_automation.created_at,
-        "message": "Automation created successfully! It will run automatically in the cloud."
+        "message": "Automation created successfully! Running every 10 seconds."
     }
 
 @router.get("/list")
 def list_hosted_automations(db: Session = Depends(get_db)):
-    """Get all automations for current user"""
+    """Get all automations"""
     user_id = "demo_user"
     
     automations = db.query(HostedAutomation).filter(
@@ -99,9 +94,32 @@ def list_hosted_automations(db: Session = Depends(get_db)):
     
     return results
 
+@router.get("/debug")
+def debug_automations(db: Session = Depends(get_db)):
+    """Debug: See all automations in database"""
+    all_automations = db.query(HostedAutomation).all()
+    
+    return {
+        "total_count": len(all_automations),
+        "active_count": sum(1 for a in all_automations if a.is_active),
+        "automations": [
+            {
+                "id": a.id,
+                "name": a.name,
+                "is_active": a.is_active,
+                "automation_type": a.automation_type,
+                "config": json.loads(a.config),
+                "last_run": str(a.last_run) if a.last_run else None,
+                "interval_minutes": a.interval_minutes,
+                "created_at": str(a.created_at)
+            }
+            for a in all_automations
+        ]
+    }
+
 @router.put("/{automation_id}/toggle")
 def toggle_automation(automation_id: int, db: Session = Depends(get_db)):
-    """Pause or resume an automation"""
+    """Pause or resume automation"""
     automation = db.query(HostedAutomation).filter(
         HostedAutomation.id == automation_id
     ).first()
@@ -112,11 +130,13 @@ def toggle_automation(automation_id: int, db: Session = Depends(get_db)):
     automation.is_active = not automation.is_active
     db.commit()
     
+    print(f"🔄 Toggled automation #{automation_id}: Active={automation.is_active}")
+    
     return {"id": automation_id, "is_active": automation.is_active}
 
 @router.delete("/{automation_id}")
 def delete_automation(automation_id: int, db: Session = Depends(get_db)):
-    """Delete an automation"""
+    """Delete automation"""
     automation = db.query(HostedAutomation).filter(
         HostedAutomation.id == automation_id
     ).first()
@@ -127,6 +147,8 @@ def delete_automation(automation_id: int, db: Session = Depends(get_db)):
     db.delete(automation)
     db.commit()
     
+    print(f"🗑️  Deleted automation #{automation_id}")
+    
     return {"message": "Automation deleted successfully"}
 
 @router.get("/{automation_id}/runs")
@@ -135,7 +157,7 @@ def get_automation_runs(
     limit: int = 20,
     db: Session = Depends(get_db)
 ):
-    """Get execution history for an automation"""
+    """Get execution history"""
     runs = db.query(AutomationRun).filter(
         AutomationRun.automation_id == automation_id
     ).order_by(AutomationRun.executed_at.desc()).limit(limit).all()
@@ -151,70 +173,3 @@ def get_automation_runs(
         }
         for run in runs
     ]
-
-@router.get("/debug")
-def debug_automations(db: Session = Depends(get_db)):
-    """Debug endpoint to see all automations"""
-    automations = db.query(HostedAutomation).all()
-    
-    return {
-        "total_count": len(automations),
-        "automations": [
-            {
-                "id": a.id,
-                "name": a.name,
-                "is_active": a.is_active,
-                "automation_type": a.automation_type,
-                "config": json.loads(a.config),
-                "last_run": str(a.last_run) if a.last_run else None,
-                "interval_minutes": a.interval_minutes
-            }
-            for a in automations
-        ]
-    }
-
-@router.get("/test-email/{automation_id}")
-def test_email(automation_id: int, db: Session = Depends(get_db)):
-    """Test email sending for an automation"""
-    automation = db.query(HostedAutomation).filter(
-        HostedAutomation.id == automation_id
-    ).first()
-    
-    if not automation:
-        raise HTTPException(status_code=404, detail="Automation not found")
-    
-    config = json.loads(automation.config)
-    
-    if not config.get('email'):
-        return {"error": "No email configured in this automation"}
-    
-    try:
-        # Import the email function
-        from app.scheduler.automation_scheduler import send_email_notification, EMAIL_ENABLED
-        
-        if not EMAIL_ENABLED:
-            return {
-                "error": "Email not enabled",
-                "resend_installed": False,
-                "api_key_set": False
-            }
-        
-        send_email_notification(
-            config['email'],
-            f"🧪 Test Email from {automation.name}",
-            config['url'],
-            "This is a test email to verify your email notifications are working!"
-        )
-        
-        return {
-            "success": True,
-            "message": f"Test email sent to {config['email']}",
-            "email": config['email']
-        }
-        
-    except Exception as e:
-        import traceback
-        return {
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
