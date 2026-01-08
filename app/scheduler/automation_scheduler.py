@@ -64,17 +64,30 @@ def execute_website_monitor(automation: HostedAutomation, db):
             notifications_sent.append("Discord")
         
         # Send Email notification if changed
-        if changed and config.get('email') and EMAIL_ENABLED:
-            send_email_notification(
-                config['email'],
-                f"🔔 Change Detected: {automation.name}",
-                config['url'],
-                current_value[:500]
-            )
-            notifications_sent.append("Email")
-        
-        if notifications_sent:
-            run.notified = True
+        # Send Email notification if changed
+        if changed and config.get('email'):
+            print(f"📧 Attempting to send email to: {config.get('email')}")
+            
+            if EMAIL_ENABLED:
+                print(f"✓ Resend is enabled, sending email...")
+                try:
+                    send_email_notification(
+                        config['email'],
+                        f"🔔 Change Detected: {automation.name}",
+                        config['url'],
+                        current_value[:500]
+                    )
+                    notifications_sent.append("Email")
+                except Exception as e:
+                    print(f"❌ Email send failed: {str(e)}")
+            else:
+                print(f"❌ EMAIL_ENABLED is False - Resend API key missing or resend not installed")
+        else:
+            if not changed:
+                print(f"ℹ️  No change detected, skipping email")
+            if not config.get('email'):
+                print(f"⚠️  No email configured in automation config")
+
         
         db.commit()
         
@@ -114,6 +127,8 @@ def send_discord_notification(webhook_url: str, title: str, content: str):
 def send_email_notification(email: str, subject: str, url: str, content: str):
     """Send email notification using Resend"""
     try:
+        print(f"📧 Preparing email to {email}...")
+        
         params = {
             "from": "Agentic Automation <onboarding@resend.dev>",
             "to": [email],
@@ -148,21 +163,25 @@ def send_email_notification(email: str, subject: str, url: str, content: str):
                         <p><strong>New Content Preview:</strong></p>
                         <pre style="background: white; padding: 15px; border-radius: 5px; overflow-x: auto;">{content}</pre>
                         
-                        <p>Visit your <a href="https://your-frontend-url.vercel.app/hosted-automations" style="color: #667eea;">automation dashboard</a> to see full details.</p>
+                        <p>You're receiving this from Agentic Automation Platform.</p>
                     </div>
                     <div class="footer">
-                        <p>Sent by Agentic Automation Platform</p>
-                        <p>You're receiving this because you set up an automation to monitor this URL.</p>
+                        <p>Automated notification from your cloud automation</p>
                     </div>
                 </div>
             </body>
             </html>
             """
         }
-        resend.Emails.send(params)
-        print(f"📧 Email sent to {email}")
+        
+        print(f"📧 Calling Resend API...")
+        result = resend.Emails.send(params)
+        print(f"✅ Email sent successfully! Response: {result}")
+        
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"❌ Email send error: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
 
 def run_scheduled_automations():
     """Check and run active automations"""

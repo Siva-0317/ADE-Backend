@@ -172,3 +172,49 @@ def debug_automations(db: Session = Depends(get_db)):
             for a in automations
         ]
     }
+
+@router.get("/test-email/{automation_id}")
+def test_email(automation_id: int, db: Session = Depends(get_db)):
+    """Test email sending for an automation"""
+    automation = db.query(HostedAutomation).filter(
+        HostedAutomation.id == automation_id
+    ).first()
+    
+    if not automation:
+        raise HTTPException(status_code=404, detail="Automation not found")
+    
+    config = json.loads(automation.config)
+    
+    if not config.get('email'):
+        return {"error": "No email configured in this automation"}
+    
+    try:
+        # Import the email function
+        from app.scheduler.automation_scheduler import send_email_notification, EMAIL_ENABLED
+        
+        if not EMAIL_ENABLED:
+            return {
+                "error": "Email not enabled",
+                "resend_installed": False,
+                "api_key_set": False
+            }
+        
+        send_email_notification(
+            config['email'],
+            f"🧪 Test Email from {automation.name}",
+            config['url'],
+            "This is a test email to verify your email notifications are working!"
+        )
+        
+        return {
+            "success": True,
+            "message": f"Test email sent to {config['email']}",
+            "email": config['email']
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
