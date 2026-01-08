@@ -1,13 +1,23 @@
-from fastapi import APIRouter, HTTPException
-from app.models import TaskInput, WorkflowDesign
-from app.agents.workflow_designer import design_workflow
+from fastapi import APIRouter
+from pydantic import BaseModel
 
 router = APIRouter()
 
-@router.post("/design", response_model=WorkflowDesign)
-async def design_workflow_endpoint(task: TaskInput):
-    try:
-        workflow = await design_workflow(task.task_description, task.automation_type)
-        return workflow
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to design workflow: {str(e)}")
+class WorkflowDesign(BaseModel):
+    task_description: str
+    automation_type: str
+
+@router.post("/design")
+def design_workflow(workflow: WorkflowDesign):
+    """Design workflow endpoint (simplified for MVP)"""
+    return {
+        "message": "Workflow design endpoint",
+        "task": workflow.task_description,
+        "type": workflow.automation_type,
+        "status": "success"
+    }
+
+@router.get("/status")
+def get_status():
+    """Health check for workflows"""
+    return {"status": "online", "service": "workflows"}
