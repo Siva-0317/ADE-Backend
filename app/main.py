@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.routes import auth, automations, workflows, hosted_automations
+# from app.routes import auth, automations, workflows, hosted_automations  # OLD
+from app.routes import automations, workflows, hosted_automations  # Remove auth for now
 from app.scheduler.automation_scheduler import start_scheduler, shutdown_scheduler
 from app.database import engine, Base
 
@@ -32,7 +33,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+# app.include_router(auth.router, prefix="/api/auth", tags=["auth"])  # Commented out
 app.include_router(automations.router, prefix="/api/automations", tags=["automations"])
 app.include_router(workflows.router, prefix="/api/workflows", tags=["workflows"])
 app.include_router(hosted_automations.router, prefix="/api/hosted-automations", tags=["hosted"])
