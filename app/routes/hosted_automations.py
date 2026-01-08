@@ -173,3 +173,46 @@ def get_automation_runs(
         }
         for run in runs
     ]
+
+@router.get("/test-email")
+def test_email_service():
+    """Test email sending directly"""
+    import os
+    
+    # Check environment
+    resend_key = os.getenv("RESEND_API_KEY")
+    
+    if not resend_key:
+        return {
+            "error": "RESEND_API_KEY not set in environment",
+            "email_enabled": False
+        }
+    
+    try:
+        import resend
+        resend.api_key = resend_key
+        
+        # Send test email
+        params = {
+            "from": "Agentic Automation <onboarding@resend.dev>",
+            "to": ["sivaphoton0327@gmail.com"],
+            "subject": "Test Email from Agentic Automation",
+            "html": "<h1>Success!</h1><p>If you see this, email is working!</p>"
+        }
+        
+        result = resend.Emails.send(params)
+        
+        return {
+            "success": True,
+            "message": "Email sent successfully!",
+            "resend_response": result,
+            "email": "sivaphoton0327@gmail.com"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
