@@ -14,6 +14,8 @@ def execute_website_monitor(automation: HostedAutomation, db):
     try:
         config = json.loads(automation.config)
         
+        print(f"🔄 Checking automation #{automation.id}: {automation.name}")
+        
         # Fetch website
         response = httpx.get(config['url'], timeout=10.0, follow_redirects=True)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -45,12 +47,14 @@ def execute_website_monitor(automation: HostedAutomation, db):
             send_discord_notification(
                 config['discord_webhook'],
                 f"🔔 Change detected: {automation.name}",
-                current_value[:200]
+                f"**URL:** {config['url']}\n\n**New content:**\n{current_value[:300]}"
             )
             run.notified = True
         
         db.commit()
-        print(f"✓ Executed automation #{automation.id}: {automation.name} - {'CHANGED' if changed else 'No change'}")
+        
+        status_emoji = "🔥" if changed else "✓"
+        print(f"{status_emoji} Automation #{automation.id}: {automation.name} - {'CHANGED' if changed else 'No change'}")
         
     except Exception as e:
         print(f"✗ Error executing automation #{automation.id}: {str(e)}")
@@ -71,9 +75,13 @@ def send_discord_notification(webhook_url: str, title: str, content: str):
                 "title": title,
                 "description": content,
                 "color": 5814783,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "footer": {
+                    "text": "Agentic Automation Platform"
+                }
             }]
         }, timeout=5.0)
+        print(f"📨 Discord notification sent!")
     except Exception as e:
         print(f"Failed to send Discord notification: {e}")
 
@@ -87,11 +95,23 @@ def run_scheduled_automations():
             HostedAutomation.is_active == True
         ).all()
         
+        if not automations:
+            print("⏸️  No active automations to run")
+            return
+        
+        print(f"🔍 Checking {len(automations)} active automation(s)...")
+        
         for automation in automations:
+            # For demo: minimum 10 seconds, otherwise use user's interval
+            min_interval_seconds = 10  # Demo mode: 10 seconds minimum
+            
             # Check if it's time to run
             if automation.last_run:
-                minutes_since = (datetime.now() - automation.last_run).total_seconds() / 60
-                if minutes_since < automation.interval_minutes:
+                seconds_since = (datetime.now() - automation.last_run).total_seconds()
+                # Use whichever is smaller: user interval or minimum for demo
+                required_seconds = min(automation.interval_minutes * 60, min_interval_seconds)
+                
+                if seconds_since < required_seconds:
                     continue
             
             # Execute based on type
@@ -105,16 +125,19 @@ def run_scheduled_automations():
 
 def start_scheduler():
     """Start the background scheduler"""
-    print("🚀 Starting automation scheduler...")
+    print("🚀 Starting automation scheduler (Demo mode: checking every 10 seconds)...")
+    
+    # Check every 10 seconds for demo purposes
     scheduler.add_job(
         run_scheduled_automations,
-        trigger=IntervalTrigger(minutes=5),
+        trigger=IntervalTrigger(seconds=10),  # Changed from 5 minutes to 10 seconds
         id='automation_checker',
-        name='Check automations every 5 minutes',
+        name='Check automations every 10 seconds (Demo mode)',
         replace_existing=True
     )
+    
     scheduler.start()
-    print("✓ Scheduler started!")
+    print("✓ Scheduler started! Automations will run every 10 seconds minimum")
 
 def shutdown_scheduler():
     """Stop scheduler gracefully"""
