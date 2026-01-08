@@ -1,24 +1,31 @@
-from app.config import get_settings
-from typing import Optional
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import os
 
-settings = get_settings()
+# Database URL - using SQLite for simplicity (works on Render)
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "sqlite:///./automations.db"
+)
 
-# Make Supabase optional for MVP
-supabase = None
+# Create engine
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
+)
 
-try:
-    from supabase import create_client, Client
-    supabase: Optional[Client] = create_client(
-        settings.SUPABASE_URL,
-        settings.SUPABASE_KEY
-    )
-    print("✓ Supabase connected successfully")
-except Exception as e:
-    print(f"⚠ Supabase connection failed: {e}")
-    print("⚠ Running without Supabase - auth features disabled for MVP")
-    supabase = None
+# Session
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-def get_supabase():
-    if supabase is None:
-        raise Exception("Supabase not available - please use API without auth for MVP")
-    return supabase
+# Base class for models
+Base = declarative_base()
+
+# Dependency for routes
+def get_db():
+    """Database session dependency"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
