@@ -29,16 +29,16 @@ class HostedAutomationResponse(BaseModel):
     class Config:
         from_attributes = True
 
-@router.post("/create", response_model=HostedAutomationResponse)
+@router.post("/create")
 def create_hosted_automation(
     automation: CreateHostedAutomation,
     db: Session = Depends(get_db)
 ):
     """Create a new cloud-hosted automation"""
     
-    # For MVP, limit to 3 automations per user (implement user_id from auth later)
-    user_id = "demo_user"  # Replace with actual auth
+    user_id = "demo_user"  # For MVP without auth
     
+    # Check limit
     count = db.query(HostedAutomation).filter(
         HostedAutomation.user_id == user_id
     ).count()
@@ -46,9 +46,10 @@ def create_hosted_automation(
     if count >= 3:
         raise HTTPException(
             status_code=400,
-            detail="Free tier limited to 3 active automations"
+            detail="Free tier limited to 3 active automations. Delete an existing one to create new."
         )
     
+    # Create automation
     new_automation = HostedAutomation(
         user_id=user_id,
         automation_type=automation.automation_type,
@@ -62,16 +63,22 @@ def create_hosted_automation(
     db.commit()
     db.refresh(new_automation)
     
-    # Parse config back to dict for response
-    result = HostedAutomationResponse.from_orm(new_automation)
-    result.config = json.loads(new_automation.config)
-    
-    return result
+    return {
+        "id": new_automation.id,
+        "automation_type": new_automation.automation_type,
+        "name": new_automation.name,
+        "config": json.loads(new_automation.config),
+        "interval_minutes": new_automation.interval_minutes,
+        "is_active": new_automation.is_active,
+        "last_run": new_automation.last_run,
+        "created_at": new_automation.created_at,
+        "message": "Automation created successfully! It will run automatically in the cloud."
+    }
 
-@router.get("/list", response_model=List[HostedAutomationResponse])
+@router.get("/list")
 def list_hosted_automations(db: Session = Depends(get_db)):
     """Get all automations for current user"""
-    user_id = "demo_user"  # Replace with actual auth
+    user_id = "demo_user"
     
     automations = db.query(HostedAutomation).filter(
         HostedAutomation.user_id == user_id
@@ -79,9 +86,16 @@ def list_hosted_automations(db: Session = Depends(get_db)):
     
     results = []
     for auto in automations:
-        result = HostedAutomationResponse.from_orm(auto)
-        result.config = json.loads(auto.config)
-        results.append(result)
+        results.append({
+            "id": auto.id,
+            "automation_type": auto.automation_type,
+            "name": auto.name,
+            "config": json.loads(auto.config),
+            "interval_minutes": auto.interval_minutes,
+            "is_active": auto.is_active,
+            "last_run": auto.last_run,
+            "created_at": auto.created_at
+        })
     
     return results
 
@@ -126,4 +140,14 @@ def get_automation_runs(
         AutomationRun.automation_id == automation_id
     ).order_by(AutomationRun.executed_at.desc()).limit(limit).all()
     
-    return runs
+    return [
+        {
+            "id": run.id,
+            "automation_id": run.automation_id,
+            "status": run.status,
+            "result": run.result,
+            "notified": run.notified,
+            "executed_at": run.executed_at
+        }
+        for run in runs
+    ]
