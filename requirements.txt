@@ -21,4 +21,5 @@ apscheduler==3.10.4
 # LLM APIs (lightweight)
 groq==0.4.1
 google-generativeai==0.3.2
+lxml==4.9.3
 sqlalchemy==2.0.32
