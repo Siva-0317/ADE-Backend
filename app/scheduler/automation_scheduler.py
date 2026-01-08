@@ -3,37 +3,21 @@ from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime
 import httpx
 import json
+import os
 from bs4 import BeautifulSoup
 from app.database import SessionLocal
 from app.models.hosted_automation import HostedAutomation, AutomationRun
 
+# Email setup
+try:
+    import resend
+    resend.api_key = os.getenv("RESEND_API_KEY")
+    EMAIL_ENABLED = bool(os.getenv("RESEND_API_KEY"))
+except ImportError:
+    EMAIL_ENABLED = False
+    print("⚠️  Resend not installed. Email notifications disabled.")
+
 scheduler = BackgroundScheduler()
-
-import os
-import resend
-
-# At the top after imports
-resend.api_key = os.getenv("RESEND_API_KEY")
-
-def send_email_notification(email: str, subject: str, body: str):
-    """Send email notification using Resend"""
-    try:
-        params = {
-            "from": "Agentic Automation <onboarding@resend.dev>",  # Use your domain later
-            "to": [email],
-            "subject": subject,
-            "html": f"""
-            <h2>{subject}</h2>
-            <p>{body}</p>
-            <hr/>
-            <small>Sent by Agentic Automation Platform</small>
-            """
-        }
-        resend.Emails.send(params)
-        print(f"📧 Email sent to {email}")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-
 
 def execute_website_monitor(automation: HostedAutomation, db):
     """Execute a website monitoring automation"""
@@ -68,28 +52,35 @@ def execute_website_monitor(automation: HostedAutomation, db):
         if changed:
             automation.last_result = current_value
         
-        # Send email if configured
-        if changed and config.get('email'):
-            send_email_notification(
-                config['email'],
-                f"🔔 Change Detected: {automation.name}",
-                f"URL: {config['url']}\n\nNew content:\n{current_value[:300]}"
-            )
-            run.notified = True
-
-        # Send notification if changed
+        notifications_sent = []
+        
+        # Send Discord notification if changed
         if changed and config.get('discord_webhook'):
             send_discord_notification(
                 config['discord_webhook'],
                 f"🔔 Change detected: {automation.name}",
                 f"**URL:** {config['url']}\n\n**New content:**\n{current_value[:300]}"
             )
+            notifications_sent.append("Discord")
+        
+        # Send Email notification if changed
+        if changed and config.get('email') and EMAIL_ENABLED:
+            send_email_notification(
+                config['email'],
+                f"🔔 Change Detected: {automation.name}",
+                config['url'],
+                current_value[:500]
+            )
+            notifications_sent.append("Email")
+        
+        if notifications_sent:
             run.notified = True
         
         db.commit()
         
         status_emoji = "🔥" if changed else "✓"
-        print(f"{status_emoji} Automation #{automation.id}: {automation.name} - {'CHANGED' if changed else 'No change'}")
+        notif_info = f" ({', '.join(notifications_sent)} sent)" if notifications_sent else ""
+        print(f"{status_emoji} Automation #{automation.id}: {automation.name} - {'CHANGED' if changed else 'No change'}{notif_info}")
         
     except Exception as e:
         print(f"✗ Error executing automation #{automation.id}: {str(e)}")
@@ -120,12 +111,64 @@ def send_discord_notification(webhook_url: str, title: str, content: str):
     except Exception as e:
         print(f"Failed to send Discord notification: {e}")
 
+def send_email_notification(email: str, subject: str, url: str, content: str):
+    """Send email notification using Resend"""
+    try:
+        params = {
+            "from": "Agentic Automation <onboarding@resend.dev>",
+            "to": [email],
+            "subject": subject,
+            "html": f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; }}
+                    .content {{ background: #f9f9f9; padding: 20px; border-radius: 0 0 10px 10px; }}
+                    .alert {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; }}
+                    .url {{ color: #667eea; word-break: break-all; }}
+                    .footer {{ text-align: center; margin-top: 20px; color: #666; font-size: 12px; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h2 style="margin: 0;">🔔 Change Detected!</h2>
+                    </div>
+                    <div class="content">
+                        <div class="alert">
+                            <strong>Your automation detected a change</strong>
+                        </div>
+                        
+                        <p><strong>Monitored URL:</strong></p>
+                        <p class="url">{url}</p>
+                        
+                        <p><strong>New Content Preview:</strong></p>
+                        <pre style="background: white; padding: 15px; border-radius: 5px; overflow-x: auto;">{content}</pre>
+                        
+                        <p>Visit your <a href="https://your-frontend-url.vercel.app/hosted-automations" style="color: #667eea;">automation dashboard</a> to see full details.</p>
+                    </div>
+                    <div class="footer">
+                        <p>Sent by Agentic Automation Platform</p>
+                        <p>You're receiving this because you set up an automation to monitor this URL.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+        }
+        resend.Emails.send(params)
+        print(f"📧 Email sent to {email}")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
 def run_scheduled_automations():
     """Check and run active automations"""
     db = SessionLocal()
     
     try:
-        # Get active automations
         automations = db.query(HostedAutomation).filter(
             HostedAutomation.is_active == True
         ).all()
@@ -137,19 +180,15 @@ def run_scheduled_automations():
         print(f"🔍 Checking {len(automations)} active automation(s)...")
         
         for automation in automations:
-            # For demo: minimum 10 seconds, otherwise use user's interval
-            min_interval_seconds = 10  # Demo mode: 10 seconds minimum
+            min_interval_seconds = 10  # Demo mode
             
-            # Check if it's time to run
             if automation.last_run:
                 seconds_since = (datetime.now() - automation.last_run).total_seconds()
-                # Use whichever is smaller: user interval or minimum for demo
                 required_seconds = min(automation.interval_minutes * 60, min_interval_seconds)
                 
                 if seconds_since < required_seconds:
                     continue
             
-            # Execute based on type
             if automation.automation_type == "website_monitor":
                 execute_website_monitor(automation, db)
                 
@@ -161,18 +200,21 @@ def run_scheduled_automations():
 def start_scheduler():
     """Start the background scheduler"""
     print("🚀 Starting automation scheduler (Demo mode: checking every 10 seconds)...")
+    if EMAIL_ENABLED:
+        print("✓ Email notifications enabled via Resend")
+    else:
+        print("⚠️  Email notifications disabled (no RESEND_API_KEY)")
     
-    # Check every 10 seconds for demo purposes
     scheduler.add_job(
         run_scheduled_automations,
-        trigger=IntervalTrigger(seconds=10),  # Changed from 5 minutes to 10 seconds
+        trigger=IntervalTrigger(seconds=10),
         id='automation_checker',
         name='Check automations every 10 seconds (Demo mode)',
         replace_existing=True
     )
     
     scheduler.start()
-    print("✓ Scheduler started! Automations will run every 10 seconds minimum")
+    print("✓ Scheduler started!")
 
 def shutdown_scheduler():
     """Stop scheduler gracefully"""
