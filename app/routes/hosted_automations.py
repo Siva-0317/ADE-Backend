@@ -151,3 +151,24 @@ def get_automation_runs(
         }
         for run in runs
     ]
+
+@router.get("/debug")
+def debug_automations(db: Session = Depends(get_db)):
+    """Debug endpoint to see all automations"""
+    automations = db.query(HostedAutomation).all()
+    
+    return {
+        "total_count": len(automations),
+        "automations": [
+            {
+                "id": a.id,
+                "name": a.name,
+                "is_active": a.is_active,
+                "automation_type": a.automation_type,
+                "config": json.loads(a.config),
+                "last_run": str(a.last_run) if a.last_run else None,
+                "interval_minutes": a.interval_minutes
+            }
+            for a in automations
+        ]
+    }
